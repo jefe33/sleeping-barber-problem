@@ -7,7 +7,6 @@
 #include <stdbool.h>
 #include <getopt.h>
 
-#define N 10
 
 struct Queue{
     int id;
@@ -24,7 +23,7 @@ pthread_cond_t client_ready = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t queue_charis = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t barber_chair = PTHREAD_MUTEX_INITIALIZER;
 
-int num_of_queue_chairs = N;
+int num_of_queue_chairs;
 int num_of_clients_in_queue = 0;
 int total_id = 1;
 int serverd_clinet_id = 0;
@@ -84,7 +83,7 @@ int main(int arg,char ** argc){
 	}
     
     while(turns > 0) {
-        for (int i = 0; i < N + turns; i++) {
+        for (int i = 0; i < num_of_queue_chairs + turns; i++) {
             status = pthread_create(&client_thread, NULL, client, NULL);
             if (status != 0)
             {
