@@ -4,6 +4,8 @@
 #include <semaphore.h>
 #include <unistd.h>
 #include <time.h>
+#include <stdbool.h>
+#include <getopt.h>
 
 #define N 10
 
@@ -40,7 +42,33 @@ void display();
 void displayDebug();
 
 
-int main(){
+int main(int arg,char ** argc){
+    
+    int c;
+    int option_index = 0;
+    opterr = 0;
+    static struct option long_options[]= {
+    {"debug", no_argument,NULL ,1},
+    {"chairs", required_argument,NULL ,2},
+    {0,0,0,0}
+    };
+    while(c != -1){
+    c = getopt_long(arg, argc, "", long_options,&option_index);
+    //printf("%d\n",c);
+    switch (c){
+       case 1:
+       debug = 1;
+       printf("DEBUG ON\n");
+       break;
+       case 2:
+       printf("Number of chairs: %s\n",optarg);
+       num_of_queue_chairs = atoi(optarg);
+       break;
+       case 63:
+       printf("bledny argument\n");
+       exit(-1);
+       }
+    }
     srand(time(0));
 
     int status;
