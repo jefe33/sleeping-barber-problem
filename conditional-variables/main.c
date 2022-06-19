@@ -9,17 +9,18 @@
 
 struct Queue{
     int id;
-    sem_t client_turn;
-    sem_t cut_redy;
+    pthread_cond_t client_turn;
+    pthread_cond_t cut_redy;
     struct Queue* next;
 };
 
 struct Queue *clients_queue = NULL;
 struct Queue *resigned_clients_queue = NULL;
 
-sem_t client_ready;
+pthread_cond_t client_ready = PTHREAD_COND_INITIALIZER;
 
 pthread_mutex_t queue_charis = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t barber_chair = PTHREAD_MUTEX_INITIALIZER;
 
 int num_of_queue_chairs = N;
 int num_of_clients_in_queue = 0;
@@ -45,7 +46,6 @@ int main(){
     int status;
     int turns = rand() % 5 + 5;
     
-    sem_init(&client_ready, 0, 0);
     pthread_t barber_thread, client_thread;
 
     status = pthread_create(&barber_thread, NULL, barber, NULL);
@@ -76,8 +76,8 @@ struct Queue* add_to_queue(struct Queue** head){
     new_client = malloc(sizeof(struct Queue));
     new_client->id = total_id++;
     new_client->next = NULL;
-    sem_init(&new_client->client_turn, 0, 0);
-    sem_init(&new_client->cut_redy, 0, 0);
+    pthread_cond_init(&new_client->client_turn, NULL);
+    pthread_cond_init(&new_client->cut_redy, NULL);
 
     if(*head == NULL){
         *head = new_client;
@@ -155,14 +155,22 @@ void* client(void* ptr){
         struct Queue* client_in_queue = add_to_queue(&clients_queue);
         display();
         // poinformowanie fryzjera ze client jest gotowy na strzyzenie
-        sem_post(&client_ready);
+        pthread_cond_signal(&client_ready);
+
         // odblokowanie dostepu do poczekalni
         pthread_mutex_unlock(&queue_charis);
 
         // czekanie na swoja kolej do strzyzenia
-        sem_wait(&client_in_queue->client_turn);
+        pthread_mutex_lock(&barber_chair);
+        while (serverd_clinet_id != client_in_queue->id) {
+            pthread_cond_wait(&client_in_queue->client_turn, &barber_chair);
+        }
+        pthread_mutex_unlock(&barber_chair);
+
         // przejscie do strzyzenia i czekanie na jego koniec
-        sem_wait(&client_in_queue->cut_redy);
+        pthread_mutex_lock(&barber_chair);
+        pthread_cond_wait(&client_in_queue->cut_redy, &barber_chair);
+        pthread_mutex_unlock(&barber_chair);
         return NULL;
     }else {
         // jesli brak wolnych krzesel
@@ -179,27 +187,37 @@ void* client(void* ptr){
 
 void* barber(void* ptr){
     for(;;) {
-        // czekanie na klienta
-        sem_wait(&client_ready);
         // zablokowanie dostepu do krzesel w poczekalni w celu zmiany stanu poczeklani
         pthread_mutex_lock(&queue_charis);
+        // czekanie na klienta
+        while (num_of_clients_in_queue == 0) {
+            pthread_cond_wait(&client_ready, &queue_charis);
+        }
         // zmniejszenie liczby osob w kolejce
         num_of_clients_in_queue--;
         // usuniecie osoby z kolejki do ciecia
         struct Queue* client_getting_cut = remove_from_queue(&clients_queue);
-        // poproszenie klienta na krzeslo do strzyzenia
-        sem_post(&client_getting_cut->client_turn);
         serverd_clinet_id = client_getting_cut->id;
         display();
         // odblokoowanie dostepu do krzesel
         pthread_mutex_unlock(&queue_charis);
+
+        // poproszenie klienta na krzeslo do strzyzenia
+        pthread_mutex_lock(&barber_chair);
+        pthread_cond_signal(&client_getting_cut->client_turn);
+        pthread_mutex_unlock(&barber_chair);
+
         // przeprowadzenie ciecia
         doCut();
+
         // poinformowanie klienta o koncu strzyzenia
-        sem_post(&client_getting_cut->cut_redy);
-        // zwolnienie pamieci po kliencie
-        free(client_getting_cut);
+        pthread_mutex_lock(&barber_chair);
         // zmiana id obslugiwanego klienta na 0 w celu zasygnalizowania ze zaden klient nie jest strzyzony
         serverd_clinet_id = 0;
+        pthread_cond_signal(&client_getting_cut->cut_redy);
+        pthread_mutex_unlock(&barber_chair);
+
+        // zwolnienie pamieci po kliencie
+        free(client_getting_cut);
     }
 }
